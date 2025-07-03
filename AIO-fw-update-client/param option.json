@@ -1,0 +1,13 @@
+{
+	"battery_max_voltage":	8400,
+	"battery_min_voltage":	8000,
+	"battery_output_max_voltage":	8400,
+	"battery_output_min_voltage":	8000,
+	"pd_output_max_voltage":	12500,
+	"pd_output_min_voltage":	11000,
+	"joystick_zero_point_offset_value":	100,
+	"send_min_rssi":	-255,
+	"rev_min_rssi":	-255,
+	"wifi_repeater_max_voltage":	3400,
+	"wifi_repeater_min_voltage":	3200
+}

@@ -1,0 +1,147 @@
+import * as fs from 'fs';
+
+function adjustBinary(path: string) {
+    const file = fs.readFileSync(path);
+
+    const x = new Uint8Array(file);
+    const arrayCopy = [];
+    const arrayCopyOrg = [];
+    for (let i = 0; i < x.byteLength; i++) {
+        arrayCopy.push(x[i]);
+        arrayCopyOrg.push(x[i]);
+    }
+
+    // const strs = ['mode', 'from', 'cause', 'security', 'switch', 'global', 'sniffer', 'channel'];
+    const strs = ['destroyed', 'disconnected', 'dynamic', 'secondary', 'Failed', 'incorrect'];
+
+    for (const str of strs) {
+        const hexRepresentation = [];
+
+        for (let i = 0; i < str.length; i++) {
+            hexRepresentation.push(Number(str.charCodeAt(i).toString()));
+        }
+
+        for (let i = 0; i < arrayCopy.length; i++) {
+            const page = Math.floor(i / 4096) + 1;
+            // Adjust accordingly to page numbers with issues
+            if (page !== 2 && page !== 3 && page !== 38 && page !== 39) {
+                continue;
+            }
+
+            let j = -1;
+            let match = true;
+
+            for (const hex of hexRepresentation) {
+                j++;
+
+                if (arrayCopy[i + j] !== hex) {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match) {
+                // console.log('match at', i, str);
+                for (let j = 0; j < hexRepresentation.length; j++) {
+                    arrayCopy[i + j] = 0x20;
+                }
+            }
+        }
+    }
+
+    // for (let i = 0; i < arrayCopy.length; i++) {
+    //     if (arrayCopy[i] === 0x45) {
+    //         console.log('checksum?', i, i.toString(16));
+    //     }
+    // }
+
+    // for (let i = 0; i < arrayCopy.length; i++) {
+    //     if (arrayCopy[i] === 0x2d && arrayCopy[i + 1] === 0xb9 && arrayCopy[i + 2] === 0x86) {
+    //         console.log('sha?', i, i.toString(16));
+    //     }
+    // }
+
+    const checkSumByteIndex = arrayCopy.length - 33;
+
+    // Adjust to checksum from esptool.py output
+    arrayCopy[checkSumByteIndex] = 0x67;
+
+    const crypto = require('crypto');
+    let hash = crypto.createHash('sha256');
+    hash.update(new Uint8Array(arrayCopy.slice(0, checkSumByteIndex + 1)));
+    let hex = hash.digest('hex');
+
+    const decimalArray = Array.from(Buffer.from(hex, 'hex'));
+    
+    let k = 0;
+    for (const shaPart of decimalArray) {
+        k++;
+        arrayCopy[checkSumByteIndex + k] = shaPart;
+    }
+
+    fs.writeFileSync(path.replace('.bin', '-NEW2.bin'), new Uint8Array(arrayCopy));
+}
+
+function chunkArray(arr: ArrayBuffer, chunk_size: number) {
+    const x = new Uint8Array(arr);
+    const arrayCopy = [];
+    for (let i = 0; i < x.byteLength; i++) {
+        arrayCopy.push(x[i]);
+    }
+
+    const results = [];
+    while (arrayCopy.length) {
+        results.push(arrayCopy.splice(0, chunk_size));
+    }
+
+    return results;
+}
+
+async function prepareBinary(path: string) {
+    const file = fs.readFileSync(path);
+    const pageChunks = chunkArray(file, 4096);
+
+    console.log('Total Page chunks: ', pageChunks.length);
+    console.log('Total flash size: ', file.byteLength);
+
+    return {
+        pageChunks,
+        totalLength: file.byteLength,
+    }
+}
+
+const main = async () => {
+    adjustBinary('../build/aio-rt7-172.bin');
+
+    const files = [
+        'aio-rt7-172-NEW2.bin',
+    ];
+
+    for (const file of files) {
+        const bin = await prepareBinary(`../build/${file}`);
+
+        let i = 0;
+        let max = 0;
+
+        for (const chunk of bin.pageChunks) {
+            i++;
+
+            const data = chunk.join(' ');
+
+            if (data.length >= 14299) { // 14233
+                const offset = (i - 1) * 4096;
+                const hexaddress = offset.toString(16);
+                console.log(file, data.length, i, offset);
+                console.log('hex', hexaddress);
+            } else {
+                if (data.length > max) {
+                    max = data.length;
+                }
+            }
+        }
+
+        console.log('max', max);
+    }
+};
+
+main();
